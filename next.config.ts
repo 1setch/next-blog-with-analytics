@@ -1,25 +1,22 @@
 import type { NextConfig } from "next";
 
-const nextConfig = {
+const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'api.dicebear.com',
-        port: '',
-        pathname: '/7.x/avataaars/svg/**',
+        protocol: "https",
+        hostname: "api.dicebear.com",
+        pathname: "/**",
       },
       {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '',
-        pathname: '/uploads/**',
+        protocol: "https",
+        hostname: "**.vercel.app",
+        pathname: "/**",
       },
       {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '3000',
-        pathname: '/uploads/**',
+        protocol: "http",
+        hostname: "localhost",
+        pathname: "/**",
       },
     ],
   },
