@@ -9,7 +9,9 @@ export interface IPost extends Document {
   authorName: string;
   tags: string[];
   views: number;
-  likesCount: number; // ✅ Добавляем поле для подсчета лайков
+  likesCount: number;
+  status: 'draft' | 'published'; // ← добавляем статус
+  publishedAt?: Date; // ← дата публикации
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,9 +55,18 @@ const PostSchema = new Schema({
     type: Number, 
     default: 0 
   },
-  likesCount: {  // ✅ Добавляем
-    type: Number,
-    default: 0
+  likesCount: { 
+    type: Number, 
+    default: 0 
+  },
+  status: {  // ← добавляем
+    type: String,
+    enum: ['draft', 'published'],
+    default: 'draft'
+  },
+  publishedAt: {  // ← добавляем
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true

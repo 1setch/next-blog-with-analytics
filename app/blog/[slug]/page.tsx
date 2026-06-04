@@ -7,6 +7,7 @@ import EditPostModal from '@/components/EditPostModal';
 import PostPageSkeleton from '@/components/Skeleton/PostPageSkeleton';
 import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
+import Comments from '@/components/Comments';
 
 interface Post {
   _id: string;
@@ -31,7 +32,7 @@ export default function PostPage() {
   const router = useRouter();
   const slug = params.slug as string;
   const { user } = useAuth();
-  
+
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -55,6 +56,21 @@ export default function PostPage() {
     }
   };
 
+  const downloadPDF = async () => {
+    try {
+      const res = await fetch(`/api/posts/${slug}/pdf`);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post?.title}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error('Ошибка при создании PDF');
+    }
+  };
+
   const fetchPost = async () => {
     setLoading(true);
     try {
@@ -62,7 +78,7 @@ export default function PostPage() {
       const data = await res.json();
       setPost(data);
       setLikesCount(data.likesCount || 0);
-      
+
       // Проверяем лайк
       const likeRes = await fetch(`/api/posts/${slug}/like`);
       const likeData = await likeRes.json();
@@ -85,7 +101,7 @@ export default function PostPage() {
       toast.error('Войдите чтобы поставить лайк');
       return;
     }
-    
+
     try {
       const res = await fetch(`/api/posts/${slug}/like`, { method: 'POST' });
       const data = await res.json();
@@ -99,10 +115,10 @@ export default function PostPage() {
 
   const handleDelete = async () => {
     if (!confirm('Вы уверены, что хотите удалить этот пост?')) return;
-    
+
     try {
       const res = await fetch(`/api/posts/${slug}`, { method: 'DELETE' });
-      
+
       if (res.ok) {
         toast.success('Пост удален');
         router.push('/blog');
@@ -145,7 +161,12 @@ export default function PostPage() {
         <Link href="/blog" className="text-blue-600 dark:text-blue-400 hover:underline">
           ← Назад ко всем постам
         </Link>
-        
+        <button
+          onClick={downloadPDF}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
+        >
+          📄 PDF
+        </button>
         {isOwner && (
           <div className="flex gap-2">
             <button
@@ -163,14 +184,14 @@ export default function PostPage() {
           </div>
         )}
       </div>
-      
+
       <h1 className="text-4xl md:text-5xl font-bold mb-4 text-gray-900 dark:text-white">{post.title}</h1>
-      
+
       <div className="flex flex-wrap items-center gap-4 text-gray-600 dark:text-gray-400 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
         <Link href={`/user/${post.author._id}`} className="hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2">
           {post.author.avatar && post.author.avatar !== '/default-avatar.png' ? (
-            <img 
-              src={post.author.avatar} 
+            <img
+              src={post.author.avatar}
               alt={post.author.username}
               className="w-8 h-8 rounded-full object-cover"
             />
@@ -183,7 +204,7 @@ export default function PostPage() {
         </Link>
         <span>📅 {new Date(post.createdAt).toLocaleDateString('ru-RU')}</span>
         <span>👁️ {post.views} просмотров</span>
-        <button 
+        <button
           onClick={handleLike}
           className="flex items-center gap-1 hover:text-red-500 transition"
         >
@@ -191,7 +212,7 @@ export default function PostPage() {
           <span>{likesCount}</span>
         </button>
       </div>
-      
+
       {post.tags && post.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-6">
           {post.tags.map((tag: string) => (
@@ -201,19 +222,19 @@ export default function PostPage() {
           ))}
         </div>
       )}
-      
+
       <div className="prose prose-lg max-w-none dark:prose-invert">
         {post.content.split('\n').map((paragraph: string, i: number) => (
           paragraph.trim() && <p key={i}>{paragraph}</p>
         ))}
       </div>
-      
+
       {post.author && (
         <div className="mt-12 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-4">
             {post.author.avatar && post.author.avatar !== '/default-avatar.png' ? (
-              <img 
-                src={post.author.avatar} 
+              <img
+                src={post.author.avatar}
                 alt={post.author.username}
                 className="w-12 h-12 rounded-full object-cover"
               />
@@ -231,7 +252,7 @@ export default function PostPage() {
           </div>
         </div>
       )}
-
+      <Comments postId={post._id} />
       {showEditModal && post && (
         <EditPostModal
           post={post}

@@ -4,6 +4,7 @@ import Post from '@/models/Post';
 import User from '@/models/User';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
+// GET - получить один пост
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -20,8 +21,11 @@ export async function GET(
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
     
-    post.views += 1;
-    await post.save();
+    // Увеличиваем просмотры только для опубликованных постов
+    if (post.status === 'published') {
+      post.views += 1;
+      await post.save();
+    }
     
     return NextResponse.json(post);
   } catch (error) {
@@ -30,6 +34,7 @@ export async function GET(
   }
 }
 
+// PUT - обновление поста
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -59,10 +64,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
-    const { title, content, description, tags } = await request.json();
+    const { title, content, description, tags, status } = await request.json();
     
     let newSlug = slug;
-    if (title !== post.title) {
+    if (title && title !== post.title) {
       newSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       const existingPost = await Post.findOne({ slug: newSlug, _id: { $ne: post._id } });
       if (existingPost) {
@@ -70,19 +75,26 @@ export async function PUT(
       }
     }
     
+    const updateData: any = {};
+    if (title) updateData.title = title;
+    if (newSlug !== slug) updateData.slug = newSlug;
+    if (content) updateData.content = content;
+    if (description) updateData.description = description;
+    if (tags) updateData.tags = tags;
+    if (status) {
+      updateData.status = status;
+      if (status === 'published' && post.status !== 'published') {
+        updateData.publishedAt = new Date();
+      }
+    }
+    
     const updatedPost = await Post.findByIdAndUpdate(
       post._id,
-      {
-        title,
-        slug: newSlug,
-        content,
-        description,
-        tags: tags || []
-      },
+      updateData,
       { new: true }
     );
     
-    // ✅ ВАЖНО: снова подгружаем данные автора
+    // Подгружаем данные автора
     const postWithAuthor = await Post.findById(updatedPost._id)
       .populate('author', 'username avatar bio');
     
@@ -93,6 +105,7 @@ export async function PUT(
   }
 }
 
+// DELETE - удаление поста
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }

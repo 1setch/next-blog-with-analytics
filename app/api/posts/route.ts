@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import Post from '@/models/Post';
+import User from '@/models/User';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
-// GET все посты (с пагинацией и сортировкой по дате)
+// GET - получение постов (с фильтром по статусу)
 export async function GET(request: Request) {
   try {
-    await connectToDatabase();
-    
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const authorId = searchParams.get('authorId');
+    const status = searchParams.get('status'); // draft, published, all
     const search = searchParams.get('search') || '';
     
     const skip = (page - 1) * limit;
@@ -22,9 +22,19 @@ export async function GET(request: Request) {
       query.author = authorId;
     }
     
+    // Фильтр по статусу (показываем только опубликованные посты обычным пользователям)
+    if (status === 'draft') {
+      // Только для авторизованных пользователей их черновики
+      query.status = 'draft';
+    } else if (status === 'published' || !status) {
+      query.status = 'published';
+    }
+    
     if (search) {
       query.$text = { $search: search };
     }
+    
+    await connectToDatabase();
     
     const posts = await Post.find(query)
       .populate('author', 'username avatar')
@@ -44,16 +54,16 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    console.error('GET posts error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
 
-// POST создание поста (требует авторизацию)
+// POST - создание поста (с поддержкой статуса)
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
     
-    // Проверяем авторизацию
     const token = getTokenFromRequest(request as any);
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -64,9 +74,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
     
-    const body = await request.json();
-    const { title, slug, content, description, tags } = body;
+    const { title, slug, content, description, tags, status = 'draft' } = await request.json();
     
+    // Проверяем уникальность slug
     const existingPost = await Post.findOne({ slug });
     if (existingPost) {
       return NextResponse.json({ error: 'Slug already exists' }, { status: 400 });
@@ -79,11 +89,14 @@ export async function POST(request: Request) {
       description,
       tags: tags || [],
       author: payload.userId,
-      authorName: payload.username
+      authorName: payload.username,
+      status,
+      publishedAt: status === 'published' ? new Date() : null,
     });
     
     return NextResponse.json(post, { status: 201 });
   } catch (error) {
+    console.error('POST post error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import ThemeToggle from './ThemeToggle';
 import { useState } from 'react';
+import NotificationsPopover from './NotificationsPopover';
 
 export default function Header() {
   const { user, loading, refetchUser } = useAuth();
@@ -53,22 +54,28 @@ export default function Header() {
             <Link href="/blog" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 whitespace-nowrap">
               Все посты
             </Link>
-            
+
             {isAdmin && (
               <Link href="/admin" className="hover:text-blue-600 dark:hover:text-blue-400 font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
                 📊 Админка
               </Link>
             )}
-            
+
             {user ? (
               <>
                 <Link href="/create-post" className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition text-sm whitespace-nowrap">
                   + Пост
                 </Link>
+                <Link href="/dashboard" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+                  📊 Статистика
+                </Link>
+                <Link href="/dashboard/drafts" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+                  📝 Черновики
+                </Link>
                 <Link href={`/user/${user._id}`} className="hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2 text-gray-700 dark:text-gray-300">
                   {user.avatar && user.avatar !== '/default-avatar.png' ? (
-                    <img 
-                      src={user.avatar} 
+                    <img
+                      src={user.avatar}
                       alt={user.username}
                       className="w-8 h-8 rounded-full object-cover"
                     />
@@ -93,14 +100,15 @@ export default function Header() {
                 </Link>
               </>
             )}
-            
+
             <ThemeToggle />
+            <NotificationsPopover />
           </div>
 
           {/* Мобильные элементы: ThemeToggle и бургер-меню */}
           <div className="flex items-center gap-2 md:hidden">
             <ThemeToggle />
-            
+
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
@@ -120,48 +128,51 @@ export default function Header() {
         {/* Мобильное меню (выпадающее) */}
         {mobileMenuOpen && (
           <div className="md:hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className="block hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
               onClick={() => setMobileMenuOpen(false)}
             >
               Главная
             </Link>
-            <Link 
-              href="/blog" 
+            <Link
+              href="/blog"
               className="block hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
               onClick={() => setMobileMenuOpen(false)}
             >
               Все посты
             </Link>
-            
+            <Link href="/search" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+              🔍 Поиск
+            </Link>
+
             {isAdmin && (
-              <Link 
-                href="/admin" 
+              <Link
+                href="/admin"
                 className="block hover:text-blue-600 dark:hover:text-blue-400 font-semibold text-gray-700 dark:text-gray-300 py-2"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 📊 Админка
               </Link>
             )}
-            
+
             {user ? (
               <>
-                <Link 
-                  href="/create-post" 
+                <Link
+                  href="/create-post"
                   className="block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition text-center"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   + Новый пост
                 </Link>
-                <Link 
-                  href={`/user/${user._id}`} 
+                <Link
+                  href={`/user/${user._id}`}
                   className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {user.avatar && user.avatar !== '/default-avatar.png' ? (
-                    <img 
-                      src={user.avatar} 
+                    <img
+                      src={user.avatar}
                       alt={user.username}
                       className="w-8 h-8 rounded-full object-cover"
                     />
@@ -172,8 +183,8 @@ export default function Header() {
                   )}
                   <span className="truncate">{user.username}</span>
                 </Link>
-                <button 
-                  onClick={handleLogout} 
+                <button
+                  onClick={handleLogout}
                   className="w-full text-left text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 py-2"
                 >
                   Выйти
@@ -181,15 +192,15 @@ export default function Header() {
               </>
             ) : (
               <>
-                <Link 
-                  href="/login" 
+                <Link
+                  href="/login"
                   className="block hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Войти
                 </Link>
-                <Link 
-                  href="/register" 
+                <Link
+                  href="/register"
                   className="block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-center"
                   onClick={() => setMobileMenuOpen(false)}
                 >

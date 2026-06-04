@@ -7,6 +7,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import ToastProvider from '@/components/Toaster';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { LikesProvider } from '@/context/LikesContext';
+import Chat from '@/components/Chat';
 
 export const metadata: Metadata = {
   title: 'Блог на Next.js',
@@ -28,6 +29,7 @@ export default function RootLayout({
               <ProgressBar />
               <ToastProvider />
               <main>{children}</main>
+              <Chat />
             </LikesProvider>
           </AuthProvider>
         </ThemeProvider>
