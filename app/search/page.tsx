@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
 import PostCard from '@/components/PostCard';
 import PostCardSkeleton from '@/components/Skeleton/PostCardSkeleton';
 
-export default function SearchPage() {
+// Компонент с логикой поиска (использует useSearchParams)
+function SearchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
@@ -195,5 +197,23 @@ export default function SearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Основной компонент страницы с Suspense
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-6xl mx-auto p-4">
+        <h1 className="text-3xl font-bold mb-6">🔍 Поиск</h1>
+        <div className="space-y-6">
+          {[...Array(3)].map((_, i) => (
+            <PostCardSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+    }>
+      <SearchContent />
+    </Suspense>
   );
 }
