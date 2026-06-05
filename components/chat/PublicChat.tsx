@@ -23,52 +23,102 @@ export default function PublicChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user?.email === 'admin@example.com';
+  const pusherChannelRef = useRef<any>(null);
+  const pusherClientRef = useRef<any>(null);
+  const isMounted = useRef(true);
 
   const fetchMessages = useCallback(async () => {
+    if (!isMounted.current) return;
+    
     try {
       const res = await fetch('/api/chat?limit=50');
       const data = await res.json();
-      setMessages(data.messages || []);
+      if (isMounted.current) {
+        setMessages(data.messages || []);
+        setLoading(false);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
-    } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   }, []);
 
   // Подписка на Pusher
   useEffect(() => {
+    isMounted.current = true;
     fetchMessages();
-
+    
+    let isActive = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
     const initPusher = async () => {
       const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
       
       if (!pusherKey) {
-        const interval = setInterval(fetchMessages, 3000);
-        return () => clearInterval(interval);
+        // Fallback polling
+        intervalId = setInterval(() => {
+          if (isMounted.current) {
+            fetchMessages();
+          }
+        }, 3000);
+        return;
       }
 
-      const PusherClient = (await import('pusher-js')).default;
-      const pusherClient = new PusherClient(pusherKey, {
-        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-      });
-
-      const channel = pusherClient.subscribe('chat-channel');
-      channel.bind('new-message', (newMessage: Message) => {
-        setMessages(prev => [...prev, newMessage]);
-        setTimeout(scrollToBottom, 100);
-      });
-
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-        pusherClient.disconnect();
-      };
+      try {
+        const PusherClient = (await import('pusher-js')).default;
+        
+        if (!pusherClientRef.current) {
+          const client = new PusherClient(pusherKey, {
+            cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+            forceTLS: true,
+          });
+          pusherClientRef.current = client;
+        }
+        
+        if (!isActive || !isMounted.current) return;
+        
+        const channel = pusherClientRef.current.subscribe('chat-channel');
+        pusherChannelRef.current = channel;
+        
+        channel.bind('pusher:subscription_succeeded', () => {
+          console.log('✅ Подписан на общий чат канал');
+        });
+        
+        channel.bind('new-message', (newMessage: Message) => {
+          console.log('📨 Новое сообщение в общем чате:', newMessage);
+          if (isMounted.current) {
+            setMessages(prev => {
+              if (prev.some(m => m._id === newMessage._id)) return prev;
+              return [...prev, newMessage];
+            });
+            setTimeout(scrollToBottom, 100);
+          }
+        });
+        
+        channel.bind('pusher:subscription_error', (error: any) => {
+          console.error('❌ Ошибка подписки на общий чат:', error);
+        });
+      } catch (error) {
+        console.error('Pusher initialization error:', error);
+      }
     };
-
-    const cleanup = initPusher();
+    
+    initPusher();
+    
     return () => {
-      cleanup.then(fn => fn?.());
+      isActive = false;
+      isMounted.current = false;
+      if (intervalId) clearInterval(intervalId);
+      if (pusherChannelRef.current) {
+        try {
+          pusherChannelRef.current.unbind_all();
+          pusherChannelRef.current.unsubscribe();
+        } catch (e) {
+          console.warn('Error unsubscribing from channel:', e);
+        }
+        pusherChannelRef.current = null;
+      }
+      // Не отключаем клиент полностью
     };
   }, [fetchMessages]);
 
@@ -164,7 +214,6 @@ export default function PublicChat() {
     );
   }
 
-  // Группировка сообщений с уникальными ключами
   const groupedMessages = messages.reduce((groups, message) => {
     const date = formatDate(message.createdAt);
     if (!groups[date]) {

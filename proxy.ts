@@ -15,6 +15,7 @@ export async function proxy(request: NextRequest) {
     '/api/comments',
     '/api/chat',
     '/api/notifications', // Добавляем уведомления в публичные
+    '/api/pusher/auth',  
   ];
   
   if (publicApiPaths.some(p => pathname.startsWith(p))) {

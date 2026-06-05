@@ -166,12 +166,25 @@ export async function POST(request: Request) {
     
     // Отправляем через Pusher в реальном времени
     try {
+      // Отправляем минимальные данные, БЕЗ АВАТАРА (чтобы избежать ошибки 413)
+      // Аватар может быть base64 строкой большого размера
+      const pusherMessage = {
+        _id: message._id.toString(),
+        fromUserId: message.fromUserId.toString(),
+        fromUsername: message.fromUsername,
+        // fromAvatar: message.fromAvatar, // ← НЕ отправляем аватар!
+        toUserId: message.toUserId.toString(),
+        content: message.content.substring(0, 500), // Ограничиваем длину сообщения
+        createdAt: message.createdAt,
+        read: message.read,
+      };
+      
       // Канал для отправителя и получателя
       const senderChannel = `private-chat-${payload.userId}-${toUserId}`;
       const receiverChannel = `private-chat-${toUserId}-${payload.userId}`;
       
-      await pusherServer.trigger(senderChannel, 'new-message', message);
-      await pusherServer.trigger(receiverChannel, 'new-message', message);
+      await pusherServer.trigger(senderChannel, 'new-message', pusherMessage);
+      await pusherServer.trigger(receiverChannel, 'new-message', pusherMessage);
       
       console.log('📡 [API] Pusher уведомление отправлено');
     } catch (pusherError) {

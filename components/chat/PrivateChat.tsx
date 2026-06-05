@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
+import { Send, Trash2, CheckCheck, Check } from 'lucide-react';
 
 interface Message {
   _id: string;
@@ -27,11 +28,14 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const isMounted = useRef(true);
+  const inputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user?.email === 'admin@example.com';
+  const pusherChannelRef = useRef<any>(null);
+  const pusherClientRef = useRef<any>(null);
+  const isMounted = useRef(true);
 
   const fetchMessages = useCallback(async () => {
-    if (!selectedUser || !isMounted.current) return;
+    if (!selectedUser || !user || !isMounted.current) return;
     
     try {
       const res = await fetch(`/api/chat/private?withUserId=${selectedUser.id}`);
@@ -44,43 +48,104 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
       console.error('Error fetching messages:', error);
       if (isMounted.current) setLoading(false);
     }
-  }, [selectedUser?.id]);
+  }, [selectedUser?.id, user?._id]);
 
-  // Подписка на Pusher
+  // Подписка на Pusher - только когда выбран пользователь
   useEffect(() => {
+    // Закрываем предыдущие соединения
+    if (pusherChannelRef.current) {
+      pusherChannelRef.current.unbind_all();
+      pusherChannelRef.current.unsubscribe();
+      pusherChannelRef.current = null;
+    }
+    if (pusherClientRef.current) {
+      pusherClientRef.current.disconnect();
+      pusherClientRef.current = null;
+    }
+    
     if (!selectedUser || !user) return;
     
     isMounted.current = true;
     fetchMessages();
     
+    let isActive = true;
+    
     const initPusher = async () => {
       const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
-      if (!pusherKey) return;
+      if (!pusherKey) {
+        console.warn('Pusher not configured - using polling');
+        // Fallback polling
+        const interval = setInterval(() => {
+          if (isMounted.current && selectedUser) {
+            fetchMessages();
+          }
+        }, 3000);
+        return () => clearInterval(interval);
+      }
       
-      const PusherClient = (await import('pusher-js')).default;
-      const pusherClient = new PusherClient(pusherKey, {
-        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-      });
-      
-      const channelName = `private-chat-${user._id}-${selectedUser.id}`;
-      const channel = pusherClient.subscribe(channelName);
-      
-      channel.bind('new-message', (newMessage: Message) => {
-        setMessages(prev => [...prev, newMessage]);
-        setTimeout(scrollToBottom, 100);
-      });
-      
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-        pusherClient.disconnect();
-      };
+      try {
+        const PusherClient = (await import('pusher-js')).default;
+        
+        // Создаем новый клиент только если нет активного
+        if (!pusherClientRef.current) {
+          const client = new PusherClient(pusherKey, {
+            cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+            forceTLS: true,
+            authEndpoint: '/api/pusher/auth',
+            auth: {
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            },
+          });
+          
+          client.connection.bind('state_change', (states: any) => {
+            console.log('Pusher connection state:', states.current);
+          });
+          
+          pusherClientRef.current = client;
+        }
+        
+        if (!isActive || !isMounted.current) return;
+        
+        const channelName = `private-chat-${user._id}-${selectedUser.id}`;
+        const channel = pusherClientRef.current.subscribe(channelName);
+        pusherChannelRef.current = channel;
+        
+        channel.bind('pusher:subscription_succeeded', () => {
+          console.log('✅ Подписан на канал:', channelName);
+        });
+        
+        channel.bind('new-message', (newMessage: Message) => {
+          console.log('📨 Новое сообщение через Pusher:', newMessage);
+          if (isMounted.current) {
+            setMessages(prev => {
+              if (prev.some(m => m._id === newMessage._id)) return prev;
+              return [...prev, newMessage];
+            });
+            setTimeout(scrollToBottom, 100);
+          }
+        });
+        
+        channel.bind('pusher:subscription_error', (error: any) => {
+          console.error('❌ Ошибка подписки на канал:', error);
+        });
+      } catch (error) {
+        console.error('Pusher initialization error:', error);
+      }
     };
     
-    const cleanup = initPusher();
+    const cleanupPromise = initPusher();
+    
     return () => {
+      isActive = false;
       isMounted.current = false;
-      cleanup.then(fn => fn?.());
+      if (pusherChannelRef.current) {
+        pusherChannelRef.current.unbind_all();
+        pusherChannelRef.current.unsubscribe();
+        pusherChannelRef.current = null;
+      }
+      // Не отключаем клиент полностью, чтобы не создавать его заново
     };
   }, [selectedUser?.id, user?._id, fetchMessages]);
 
@@ -110,6 +175,7 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
       if (res.ok) {
         setNewMessage('');
         onMessageSent?.();
+        if (inputRef.current) inputRef.current.focus();
       } else {
         const error = await res.json();
         toast.error(error.error || 'Ошибка отправки');
@@ -163,11 +229,11 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
 
   if (!selectedUser) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center p-4">
         <div className="text-center text-gray-500">
           <div className="text-6xl mb-4">💬</div>
-          <p>Выберите диалог или начните новый</p>
-          <p className="text-sm mt-2">Нажмите "Новое сообщение" в левой панели</p>
+          <p className="text-lg font-medium">Выберите диалог</p>
+          <p className="text-sm mt-1">или начните новый через кнопку "Новое сообщение"</p>
         </div>
       </div>
     );
@@ -177,10 +243,9 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
     return (
       <div className="flex-1 p-4 space-y-4">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="flex justify-start animate-pulse">
+          <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'} animate-pulse`}>
             <div className="max-w-[70%]">
-              <div className="h-4 bg-gray-200 rounded w-20 mb-1"></div>
-              <div className="h-10 bg-gray-200 rounded w-64"></div>
+              <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg w-48"></div>
             </div>
           </div>
         ))}
@@ -200,9 +265,9 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Заголовок */}
-      <div className="p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div className="hidden md:flex p-4 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-lg">
             {selectedUser.name[0]?.toUpperCase()}
           </div>
           <div>
@@ -215,8 +280,11 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
       {/* Сообщения */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            Нет сообщений. Напишите что-нибудь!
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center text-gray-500">
+              <p>Нет сообщений</p>
+              <p className="text-sm mt-1">Напишите что-нибудь, чтобы начать диалог</p>
+            </div>
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, dateMessages]) => (
@@ -232,24 +300,31 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
                   className={`flex ${msg.fromUserId === user?._id ? 'justify-end' : 'justify-start'} mb-3 group`}
                 >
                   <div
-                    className={`max-w-[70%] p-3 rounded-lg relative ${
+                    className={`max-w-[85%] md:max-w-[70%] p-3 rounded-2xl relative ${
                       msg.fromUserId === user?._id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-sm'
                     }`}
                   >
-                    <div className="text-sm break-words">{msg.content}</div>
-                    <div className={`text-xs mt-1 ${msg.fromUserId === user?._id ? 'text-blue-200' : 'text-gray-400'}`}>
-                      {formatTime(msg.createdAt)}
-                      {msg.fromUserId === user?._id && msg.read && ' ✓✓'}
+                    <div className="text-sm break-words whitespace-pre-wrap">
+                      {msg.content}
+                    </div>
+                    <div className={`flex items-center justify-end gap-1 text-xs mt-1 ${
+                      msg.fromUserId === user?._id ? 'text-blue-200' : 'text-gray-400'
+                    }`}>
+                      <span>{formatTime(msg.createdAt)}</span>
+                      {msg.fromUserId === user?._id && (
+                        msg.read ? <CheckCheck className="w-3 h-3" /> : <Check className="w-3 h-3" />
+                      )}
                     </div>
                     
                     {canDelete(msg) && (
                       <button
                         onClick={() => deleteMessage(msg._id)}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-red-600 transition"
+                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full w-7 h-7 text-xs flex items-center justify-center hover:bg-red-600 transition shadow-md"
+                        aria-label="Удалить сообщение"
                       >
-                        ✕
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -262,25 +337,36 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
       </div>
 
       {/* Форма отправки */}
-      <div className="p-4 border-t dark:border-gray-700 flex gap-2 bg-white dark:bg-gray-800">
-        <input
-          type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-          placeholder={`Сообщение для ${selectedUser.name}...`}
-          maxLength={500}
-          className="flex-1 border rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          disabled={sending}
-        />
-        <button
-          onClick={sendMessage}
-          disabled={sending || !newMessage.trim()}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition disabled:opacity-50"
-        >
-          {sending ? '...' : '📤'}
-        </button>
+      <div className="p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={inputRef as any}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
+            placeholder={`Сообщение для ${selectedUser.name}...`}
+            maxLength={500}
+            rows={1}
+            className="flex-1 border rounded-2xl p-3 max-h-32 resize-none dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={sending}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={sending || !newMessage.trim()}
+            className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Отправить"
+          >
+            {sending ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Send className="w-5 h-5" />
+            )}
+          </button>
+        </div>
+        <div className="text-right text-xs text-gray-400 mt-1">
+          {newMessage.length}/500
+        </div>
       </div>
     </div>
   );
-} 
+}
