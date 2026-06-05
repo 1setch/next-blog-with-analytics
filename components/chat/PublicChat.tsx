@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
+import { Send, Trash2 } from 'lucide-react';
 
 interface Message {
   _id: string;
@@ -20,6 +21,7 @@ export default function PublicChat() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user?.email === 'admin@example.com';
 
   const fetchMessages = useCallback(async () => {
@@ -64,7 +66,10 @@ export default function PublicChat() {
       };
     };
 
-    initPusher();
+    const cleanup = initPusher();
+    return () => {
+      cleanup.then(fn => fn?.());
+    };
   }, [fetchMessages]);
 
   const scrollToBottom = () => {
@@ -92,6 +97,7 @@ export default function PublicChat() {
 
       if (res.ok) {
         setNewMessage('');
+        if (inputRef.current) inputRef.current.focus();
       } else {
         const error = await res.json();
         toast.error(error.error || 'Ошибка отправки');
@@ -139,6 +145,26 @@ export default function PublicChat() {
     }
   };
 
+  const canDelete = (message: Message) => {
+    return isAdmin || message.userId === user?._id;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex-1 p-4 space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="flex justify-start animate-pulse">
+            <div className="max-w-[70%]">
+              <div className="h-4 bg-gray-200 rounded w-20 mb-1"></div>
+              <div className="h-10 bg-gray-200 rounded w-64"></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Группировка сообщений с уникальными ключами
   const groupedMessages = messages.reduce((groups, message) => {
     const date = formatDate(message.createdAt);
     if (!groups[date]) {
@@ -147,27 +173,6 @@ export default function PublicChat() {
     groups[date].push(message);
     return groups;
   }, {} as Record<string, Message[]>);
-
-  const canDelete = (message: Message) => {
-    return isAdmin || message.userId === user?._id;
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex-1 p-4 space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex justify-start animate-pulse">
-              <div className="max-w-[70%]">
-                <div className="h-4 bg-gray-200 rounded w-20 mb-1"></div>
-                <div className="h-10 bg-gray-200 rounded w-64"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-full">
@@ -180,8 +185,11 @@ export default function PublicChat() {
       {/* Сообщения */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            Пока нет сообщений. Будьте первым!
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center text-gray-500">
+              <p>Пока нет сообщений</p>
+              <p className="text-sm mt-1">Будьте первым!</p>
+            </div>
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, dateMessages]) => (
@@ -197,16 +205,23 @@ export default function PublicChat() {
                   className={`flex ${msg.userId === user?._id ? 'justify-end' : 'justify-start'} mb-3 group`}
                 >
                   <div
-                    className={`max-w-[70%] p-3 rounded-lg relative ${
+                    className={`max-w-[85%] md:max-w-[70%] p-3 rounded-2xl relative ${
                       msg.userId === user?._id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-sm'
                     }`}
                   >
                     {msg.userId !== user?._id && (
                       <div className="flex items-center gap-2 mb-1">
                         {msg.avatar ? (
-                          <img src={msg.avatar} alt={msg.username} className="w-5 h-5 rounded-full" />
+                          <img 
+                            src={msg.avatar} 
+                            alt={msg.username} 
+                            className="w-5 h-5 rounded-full"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
                         ) : (
                           <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs">
                             {msg.username[0]?.toUpperCase()}
@@ -217,18 +232,18 @@ export default function PublicChat() {
                         </div>
                       </div>
                     )}
-                    <div className="text-sm break-words">{msg.content}</div>
+                    <div className="text-sm break-words whitespace-pre-wrap">{msg.content}</div>
                     <div className={`text-xs mt-1 ${msg.userId === user?._id ? 'text-blue-200' : 'text-gray-400'}`}>
                       {formatTime(msg.createdAt)}
                     </div>
                     
-                    {/* Кнопка удаления (при наведении) */}
                     {canDelete(msg) && (
                       <button
                         onClick={() => deleteMessage(msg._id)}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full w-6 h-6 text-xs flex items-center justify-center hover:bg-red-600 transition"
+                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full w-7 h-7 text-xs flex items-center justify-center hover:bg-red-600 transition shadow-md"
+                        aria-label="Удалить сообщение"
                       >
-                        ✕
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -242,24 +257,35 @@ export default function PublicChat() {
 
       {/* Форма отправки */}
       {user ? (
-        <div className="p-4 border-t dark:border-gray-700 flex gap-2 bg-white dark:bg-gray-800">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Напишите сообщение..."
-            maxLength={500}
-            className="flex-1 border rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={sending}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={sending || !newMessage.trim()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition disabled:opacity-50"
-          >
-            {sending ? '...' : '📤'}
-          </button>
+        <div className="p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={inputRef as any}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
+              placeholder="Напишите сообщение..."
+              maxLength={500}
+              rows={1}
+              className="flex-1 border rounded-2xl p-3 max-h-32 resize-none dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={sending}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={sending || !newMessage.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Отправить"
+            >
+              {sending ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+          <div className="text-right text-xs text-gray-400 mt-1">
+            {newMessage.length}/500
+          </div>
         </div>
       ) : (
         <div className="p-4 border-t dark:border-gray-700 text-center text-sm text-gray-500 bg-white dark:bg-gray-800">

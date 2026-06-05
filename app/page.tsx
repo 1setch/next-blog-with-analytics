@@ -2,7 +2,7 @@ import { getPosts } from '@/lib/data';
 import PostCard from '@/components/PostCard';
 import Link from 'next/link';
 
-// ISR - перегенерация каждые 60 секунд
+// ISR - регенерация каждые 60 секунд
 export const revalidate = 60;
 
 export default async function Home() {
@@ -13,7 +13,7 @@ export default async function Home() {
       <h1 className="text-4xl font-bold mb-8">Последние посты</h1>
 
       <div className="space-y-6">
-        {posts.map((post: any, index: any) => (
+        {posts.map((post: any) => (
           <PostCard key={post._id} post={post} />
         ))}
       </div>

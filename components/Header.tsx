@@ -4,14 +4,36 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import ThemeToggle from './ThemeToggle';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NotificationsPopover from './NotificationsPopover';
+import { MessageCircle } from 'lucide-react';
 
 export default function Header() {
   const { user, loading, refetchUser } = useAuth();
   const router = useRouter();
   const isAdmin = user?.email === 'admin@example.com';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
+  // Получаем количество непрочитанных сообщений
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const res = await fetch('/api/chat/private');
+        const data = await res.json();
+        const unread = data.dialogs?.reduce((acc: number, dialog: any) => acc + (dialog.unreadCount || 0), 0) || 0;
+        setUnreadMessagesCount(unread);
+      } catch (error) {
+        console.error('Error fetching unread count:', error);
+      }
+    };
+
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 5000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -57,8 +79,13 @@ export default function Header() {
             <Link href="/search" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
               🔍 Поиск
             </Link>
-            <Link href="/chat" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+            <Link href="/chat" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 relative">
               💬 Чат
+              {unreadMessagesCount > 0 && (
+                <span className="absolute -top-2 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                </span>
+              )}
             </Link>
 
             {isAdmin && (
@@ -107,6 +134,14 @@ export default function Header() {
 
           {/* Мобильные элементы */}
           <div className="flex items-center gap-2 md:hidden">
+            <Link href="/chat" className="relative">
+              💬
+              {unreadMessagesCount > 0 && (
+                <span className="absolute -top-2 -right-3 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                </span>
+              )}
+            </Link>
             <ThemeToggle />
             <NotificationsPopover />
 
@@ -156,6 +191,11 @@ export default function Header() {
               onClick={() => setMobileMenuOpen(false)}
             >
               💬 Чат
+              {unreadMessagesCount > 0 && (
+                <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                  {unreadMessagesCount}
+                </span>
+              )}
             </Link>
 
             {isAdmin && (

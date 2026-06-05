@@ -6,7 +6,7 @@ import User from '@/models/User';
 // React cache - кэширует результат на время рендера
 export const getPosts = cache(async (limit = 10) => {
   await connectToDatabase();
-  const posts = await Post.find()
+  const posts = await Post.find({ status: 'published' }) // ← добавляем фильтр
     .populate('author', 'username avatar')
     .sort({ createdAt: -1 })
     .limit(limit)
@@ -16,7 +16,7 @@ export const getPosts = cache(async (limit = 10) => {
 
 export const getPostBySlug = cache(async (slug: string) => {
   await connectToDatabase();
-  const post = await Post.findOne({ slug })
+  const post = await Post.findOne({ slug, status: 'published' }) // ← добавляем фильтр
     .populate('author', 'username avatar bio')
     .lean();
   return post ? JSON.parse(JSON.stringify(post)) : null;

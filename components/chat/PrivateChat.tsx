@@ -283,4 +283,4 @@ export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChat
       </div>
     </div>
   );
-}
+} 
