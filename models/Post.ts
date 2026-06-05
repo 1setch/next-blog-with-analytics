@@ -10,8 +10,8 @@ export interface IPost extends Document {
   tags: string[];
   views: number;
   likesCount: number;
-  status: 'draft' | 'published'; // ← добавляем статус
-  publishedAt?: Date; // ← дата публикации
+  status: 'draft' | 'published';
+  publishedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,7 +19,7 @@ export interface IPost extends Document {
 const PostSchema = new Schema({
   title: { 
     type: String, 
-    required: true,
+    default: '',
     trim: true 
   },
   slug: { 
@@ -31,11 +31,11 @@ const PostSchema = new Schema({
   },
   content: { 
     type: String, 
-    required: true 
+    default: ''  // ← убрали required
   },
   description: { 
     type: String, 
-    required: true,
+    default: '',  // ← убрали required
     maxlength: 200 
   },
   author: {
@@ -49,7 +49,8 @@ const PostSchema = new Schema({
   },
   tags: [{ 
     type: String,
-    trim: true 
+    trim: true,
+    default: []
   }],
   views: { 
     type: Number, 
@@ -59,12 +60,12 @@ const PostSchema = new Schema({
     type: Number, 
     default: 0 
   },
-  status: {  // ← добавляем
+  status: {
     type: String,
     enum: ['draft', 'published'],
     default: 'draft'
   },
-  publishedAt: {  // ← добавляем
+  publishedAt: {
     type: Date,
     default: null
   }

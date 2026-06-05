@@ -2,12 +2,10 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Header from '@/components/Header';
 import ProgressBar from '@/components/ProgressBar';
-import ScrollObserver from '@/components/ScrollObserver';
 import { AuthProvider } from '@/context/AuthContext';
 import ToastProvider from '@/components/Toaster';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { LikesProvider } from '@/context/LikesContext';
-import Chat from '@/components/Chat';
 
 export const metadata: Metadata = {
   title: 'Блог на Next.js',
@@ -29,7 +27,6 @@ export default function RootLayout({
               <ProgressBar />
               <ToastProvider />
               <main>{children}</main>
-              <Chat />
             </LikesProvider>
           </AuthProvider>
         </ThemeProvider>

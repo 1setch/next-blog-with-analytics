@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import Comment from '@/models/Comment';
+import Post from '@/models/Post';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
 // GET - получить комментарии поста
@@ -20,19 +21,31 @@ export async function GET(request: Request) {
       .sort({ createdAt: -1 })
       .lean();
     
-    // Получаем ответы на комментарии
-    const commentsWithReplies = await Promise.all(
-      comments.map(async (comment) => {
-        const replies = await Comment.find({ parentId: comment._id })
-          .populate('author', 'username avatar')
-          .sort({ createdAt: 1 })
-          .lean();
-        return { ...comment, replies };
-      })
-    );
+    // Получаем все ID комментариев для поиска ответов
+    const commentIds = comments.map(c => c._id);
+    const replies = await Comment.find({ parentId: { $in: commentIds } })
+      .populate('author', 'username avatar')
+      .sort({ createdAt: 1 })
+      .lean();
+    
+    // Группируем ответы по parentId
+    const repliesMap: Record<string, any[]> = {};
+    replies.forEach(reply => {
+      const parentId = reply.parentId.toString();
+      if (!repliesMap[parentId]) {
+        repliesMap[parentId] = [];
+      }
+      repliesMap[parentId].push(reply);
+    });
+    
+    const commentsWithReplies = comments.map(comment => ({
+      ...comment,
+      replies: repliesMap[comment._id.toString()] || []
+    }));
     
     return NextResponse.json({ comments: commentsWithReplies });
   } catch (error) {
+    console.error('GET comments error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
@@ -58,6 +71,12 @@ export async function POST(request: Request) {
     
     await connectToDatabase();
     
+    // Получаем пост для уведомления
+    const post = await Post.findById(postId);
+    if (!post) {
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+    
     const comment = await Comment.create({
       postId,
       author: payload.userId,
@@ -69,8 +88,60 @@ export async function POST(request: Request) {
     const populatedComment = await Comment.findById(comment._id)
       .populate('author', 'username avatar');
     
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    
+    // Уведомление автору поста (если комментатор не автор)
+    if (post.author.toString() !== payload.userId) {
+      console.log('📤 Уведомление автору поста:', post.author.toString());
+      
+      try {
+        const notificationRes = await fetch(`${baseUrl}/api/notifications`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: post.author.toString(),
+            type: 'comment',
+            sourceId: post.slug,
+            sourceSlug: post.slug,
+            sourceAuthorId: payload.userId,
+            sourceTitle: post.title,
+          }),
+        });
+        console.log('📬 Ответ уведомления (комментарий):', notificationRes.status);
+      } catch (err) {
+        console.error('Notification error:', err);
+      }
+    }
+    
+    // Если это ответ на комментарий — уведомляем автора родительского комментария
+    if (parentId) {
+      const parentComment = await Comment.findById(parentId);
+      if (parentComment && parentComment.author.toString() !== payload.userId) {
+        console.log('📤 Уведомление автору комментария:', parentComment.author.toString());
+        
+        try {
+          const notificationRes = await fetch(`${baseUrl}/api/notifications`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: parentComment.author.toString(),
+              type: 'reply',
+              sourceId: post.slug,
+              sourceSlug: post.slug,
+              sourceAuthorId: payload.userId,
+              sourceTitle: post.title,
+            }),
+          });
+          console.log('📬 Ответ уведомления (ответ):', notificationRes.status);
+        } catch (err) {
+          console.error('Notification error:', err);
+        }
+      }
+    }
+    
     return NextResponse.json(populatedComment, { status: 201 });
   } catch (error) {
+    console.error('POST comment error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
