@@ -48,6 +48,36 @@ export async function POST(
       const newLikesCount = await Like.countDocuments({ postId: post._id });
       await Post.updateOne({ _id: post._id }, { likesCount: newLikesCount });
       
+      // Отправляем уведомление (если лайкает не сам автор)
+      if (post.author.toString() !== payload.userId) {
+        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+        
+        console.log('📤 Отправка уведомления о лайке:', {
+          userId: post.author.toString(),
+          fromUser: payload.userId,
+          postSlug: post.slug,
+          postTitle: post.title
+        });
+        
+        try {
+          const notificationRes = await fetch(`${baseUrl}/api/notifications`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: post.author.toString(),
+              type: 'like',
+              sourceId: post.slug,
+              sourceSlug: post.slug,
+              sourceAuthorId: payload.userId,
+              sourceTitle: post.title,
+            }),
+          });
+          console.log('📬 Ответ уведомления (лайк):', notificationRes.status);
+        } catch (err) {
+          console.error('Notification error:', err);
+        }
+      }
+      
       return NextResponse.json({ 
         liked: true, 
         likesCount: newLikesCount 
@@ -59,7 +89,6 @@ export async function POST(
   }
 }
 
-// Проверка статуса лайка
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -90,6 +119,7 @@ export async function GET(
       likesCount: post.likesCount || 0 
     });
   } catch (error) {
+    console.error('GET like error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

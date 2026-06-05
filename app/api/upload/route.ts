@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/mongodb';
 import User from '@/models/User';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Настройка Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,22 +30,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
     
+    // Проверка типа файла
     if (!file.type.startsWith('image/')) {
       return NextResponse.json({ error: 'File must be an image' }, { status: 400 });
     }
     
+    // Проверка размера (макс 5MB)
     if (file.size > 5 * 1024 * 1024) {
       return NextResponse.json({ error: 'File too large (max 5MB)' }, { status: 400 });
     }
     
-    // Конвертируем файл в Base64
+    // Конвертируем файл в буфер
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const base64 = buffer.toString('base64');
-    const mimeType = file.type;
-    const imageUrl = `data:${mimeType};base64,${base64}`;
     
-    // Сохраняем Base64 в базу данных
+    // Загружаем в Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: 'avatars',
+          transformation: [
+            { width: 200, height: 200, crop: 'fill' },
+            { quality: 'auto' }
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(buffer);
+    });
+    
+    const imageUrl = (result as any).secure_url;
+    
+    // Сохраняем URL в базу данных
     await connectToDatabase();
     await User.findByIdAndUpdate(payload.userId, { avatar: imageUrl });
     

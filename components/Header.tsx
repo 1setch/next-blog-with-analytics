@@ -46,31 +46,31 @@ export default function Header() {
             Блог
           </Link>
 
-          {/* Десктопное меню (скрыто на мобилках) */}
+          {/* Десктопное меню */}
           <div className="hidden md:flex items-center gap-4 lg:gap-6">
-            <Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+            <Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
               Главная
             </Link>
-            <Link href="/blog" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-              Все посты
+            <Link href="/blog" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+              Блог
+            </Link>
+            <Link href="/search" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+              🔍 Поиск
+            </Link>
+            <Link href="/chat" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+              💬 Чат
             </Link>
 
             {isAdmin && (
-              <Link href="/admin" className="hover:text-blue-600 dark:hover:text-blue-400 font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+              <Link href="/admin" className="hover:text-blue-600 dark:hover:text-blue-400 font-semibold text-gray-700 dark:text-gray-300">
                 📊 Админка
               </Link>
             )}
 
             {user ? (
               <>
-                <Link href="/create-post" className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition text-sm whitespace-nowrap">
+                <Link href="/create-post" className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition text-sm">
                   + Пост
-                </Link>
-                <Link href="/dashboard" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
-                  📊 Статистика
-                </Link>
-                <Link href="/dashboard/drafts" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
-                  📝 Черновики
                 </Link>
                 <Link href={`/user/${user._id}`} className="hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2 text-gray-700 dark:text-gray-300">
                   {user.avatar && user.avatar !== '/default-avatar.png' ? (
@@ -86,16 +86,16 @@ export default function Header() {
                   )}
                   <span className="max-w-[100px] truncate">{user.username}</span>
                 </Link>
-                <button onClick={handleLogout} className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 whitespace-nowrap">
+                <button onClick={handleLogout} className="text-red-600 dark:text-red-400 hover:text-red-700">
                   Выйти
                 </button>
               </>
             ) : (
               <>
-                <Link href="/login" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                <Link href="/login" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
                   Войти
                 </Link>
-                <Link href="/register" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition text-sm whitespace-nowrap">
+                <Link href="/register" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition text-sm">
                   Регистрация
                 </Link>
               </>
@@ -105,9 +105,10 @@ export default function Header() {
             <NotificationsPopover />
           </div>
 
-          {/* Мобильные элементы: ThemeToggle и бургер-меню */}
+          {/* Мобильные элементы */}
           <div className="flex items-center gap-2 md:hidden">
             <ThemeToggle />
+            <NotificationsPopover />
 
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -125,7 +126,7 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Мобильное меню (выпадающее) */}
+        {/* Мобильное меню */}
         {mobileMenuOpen && (
           <div className="md:hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
             <Link
@@ -140,10 +141,21 @@ export default function Header() {
               className="block hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Все посты
+              Блог
             </Link>
-            <Link href="/search" className="hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300">
+            <Link
+              href="/search"
+              className="block hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
+              onClick={() => setMobileMenuOpen(false)}
+            >
               🔍 Поиск
+            </Link>
+            <Link
+              href="/chat"
+              className="block hover:text-blue-600 dark:hover:text-blue-400 text-gray-700 dark:text-gray-300 py-2"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              💬 Чат
             </Link>
 
             {isAdmin && (
@@ -185,7 +197,7 @@ export default function Header() {
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 py-2"
+                  className="w-full text-left text-red-600 dark:text-red-400 hover:text-red-700 py-2"
                 >
                   Выйти
                 </button>

@@ -3,6 +3,9 @@ import { connectToDatabase } from '@/lib/mongodb';
 import Post from '@/models/Post';
 import User from '@/models/User';
 import Like from '@/models/Like';
+import Comment from '@/models/Comment';
+import Message from '@/models/Message';
+import PrivateMessage from '@/models/PrivateMessage';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
 export async function GET(request: Request) {
@@ -25,89 +28,58 @@ export async function GET(request: Request) {
     const totalViews = await Post.aggregate([
       { $group: { _id: null, total: { $sum: '$views' } } }
     ]);
-    
-    // Статистика лайков
     const totalLikes = await Like.countDocuments();
-    const avgLikesPerPost = totalPosts > 0 ? (totalLikes / totalPosts).toFixed(1) : 0;
+    const totalComments = await Comment.countDocuments();
+    const totalPublicMessages = await Message.countDocuments();
+    const totalPrivateMessages = await PrivateMessage.countDocuments();
     
-    // Посты с наибольшим количеством лайков
-    const topLikedPosts = await Post.find()
-      .sort({ likesCount: -1 })
-      .limit(5)
-      .select('title slug likesCount views');
+    // Активные диалоги (где есть хотя бы одно сообщение)
+    const activeDialogs = await PrivateMessage.distinct('fromUserId', {
+      $or: [
+        { fromUserId: { $exists: true } },
+        { toUserId: { $exists: true } }
+      ]
+    });
     
-    // Посты по дням (последние 30 дней) - ИСПРАВЛЕНО с учетом часового пояса
+    // Сообщения в день (в среднем за последние 30 дней)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     thirtyDaysAgo.setHours(0, 0, 0, 0);
     
-    // Смещение часового пояса (Москва UTC+3)
-    const timezoneOffset = 3; // Для Москвы. Для другого города измени значение
+    const messagesLast30Days = await PrivateMessage.countDocuments({
+      createdAt: { $gte: thirtyDaysAgo }
+    });
+    const avgMessagesPerDay = Math.round(messagesLast30Days / 30);
     
-    const postsByDay = await Post.aggregate([
+    // Посты в день
+    const postsByDay = await getStatsByDay(Post, thirtyDaysAgo);
+    const usersByDay = await getStatsByDay(User, thirtyDaysAgo);
+    const likesByDay = await getStatsByDay(Like, thirtyDaysAgo);
+    const commentsByDay = await getStatsByDay(Comment, thirtyDaysAgo);
+    
+    // Активность по часам для чатов
+    const timezoneOffset = 3;
+    const messageActivityByHour = await PrivateMessage.aggregate([
       { $match: { createdAt: { $gte: thirtyDaysAgo } } },
       {
         $addFields: {
-          localDate: {
-            $dateToString: {
-              format: '%Y-%m-%d',
-              date: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] }
-            }
-          }
+          localHour: { $hour: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] } }
         }
       },
       {
         $group: {
-          _id: '$localDate',
+          _id: '$localHour',
           count: { $sum: 1 }
         }
       },
       { $sort: { _id: 1 } }
     ]);
     
-    // Пользователи по дням
-    const usersByDay = await User.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $addFields: {
-          localDate: {
-            $dateToString: {
-              format: '%Y-%m-%d',
-              date: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] }
-            }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: '$localDate',
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-    
-    // Лайки по дням
-    const likesByDay = await Like.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $addFields: {
-          localDate: {
-            $dateToString: {
-              format: '%Y-%m-%d',
-              date: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] }
-            }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: '$localDate',
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const messageActivityData = hours.map(hour => ({
+      hour: `${hour}:00`,
+      count: messageActivityByHour.find(a => a._id === hour)?.count || 0
+    }));
     
     // Топ тегов
     const topTags = await Post.aggregate([
@@ -115,13 +87,6 @@ export async function GET(request: Request) {
       { $group: { _id: '$tags', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 10 }
-    ]);
-    
-    // Топ авторов по постам
-    const topAuthors = await Post.aggregate([
-      { $group: { _id: '$authorName', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 }
     ]);
     
     // Топ авторов по лайкам
@@ -135,62 +100,79 @@ export async function GET(request: Request) {
       { $limit: 5 }
     ]);
     
+    // Топ авторов по комментариям
+    const topAuthorsByComments = await Comment.aggregate([
+      { $group: { 
+        _id: '$authorName', 
+        totalComments: { $sum: 1 },
+        postCount: { $sum: 1 }
+      } },
+      { $sort: { totalComments: -1 } },
+      { $limit: 5 }
+    ]);
+    
     // Топ постов по просмотрам
     const topPosts = await Post.find()
       .sort({ views: -1 })
       .limit(5)
       .select('title views slug');
     
-    // Активность по часам (с учетом часового пояса)
+    // Топ постов по лайкам
+    const topLikedPosts = await Post.find()
+      .sort({ likesCount: -1 })
+      .limit(5)
+      .select('title slug likesCount views');
+    
+    // Активность по часам (посты + лайки)
     const activityByHourPosts = await Post.aggregate([
       {
         $addFields: {
           localHour: { $hour: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] } }
         }
       },
-      {
-        $group: {
-          _id: '$localHour',
-          count: { $sum: 1 }
-        }
-      },
+      { $group: { _id: '$localHour', count: { $sum: 1 } } },
       { $sort: { _id: 1 } }
     ]);
     
-    // Активность лайков по часам
     const activityByHourLikes = await Like.aggregate([
       {
         $addFields: {
           localHour: { $hour: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] } }
         }
       },
-      {
-        $group: {
-          _id: '$localHour',
-          count: { $sum: 1 }
-        }
-      },
+      { $group: { _id: '$localHour', count: { $sum: 1 } } },
       { $sort: { _id: 1 } }
     ]);
     
-    // Объединяем активность по часам для графика
-    const hours = Array.from({ length: 24 }, (_, i) => i);
     const activityData = hours.map(hour => {
       const posts = activityByHourPosts.find(a => a._id === hour)?.count || 0;
       const likes = activityByHourLikes.find(a => a._id === hour)?.count || 0;
       return {
         hour: `${hour}:00`,
-        hourNum: hour,
         posts,
         likes,
         total: posts + likes
       };
     });
     
-    // Соотношение лайков к просмотрам
+    // Дополнительные метрики
+    const avgLikesPerPost = totalPosts > 0 ? (totalLikes / totalPosts).toFixed(1) : 0;
+    const avgCommentsPerPost = totalPosts > 0 ? (totalComments / totalPosts).toFixed(1) : 0;
+    const avgViewsPerPost = totalPosts > 0 ? Math.round((totalViews[0]?.total || 0) / totalPosts) : 0;
+    const avgPostsPerUser = totalUsers > 0 ? (totalPosts / totalUsers).toFixed(1) : 0;
     const engagementRate = totalViews[0]?.total > 0 
       ? ((totalLikes / totalViews[0].total) * 100).toFixed(1)
       : 0;
+    const likesToViewsRatio = totalViews[0]?.total > 0
+      ? ((totalLikes / totalViews[0].total) * 100).toFixed(1)
+      : 0;
+    
+    // Активность сегодня
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayActivity = await Post.countDocuments({ createdAt: { $gte: today } }) +
+      await Like.countDocuments({ createdAt: { $gte: today } }) +
+      await Comment.countDocuments({ createdAt: { $gte: today } });
     
     return NextResponse.json({
       total: {
@@ -198,21 +180,62 @@ export async function GET(request: Request) {
         users: totalUsers,
         views: totalViews[0]?.total || 0,
         likes: totalLikes,
-        avgLikesPerPost,
-        engagementRate
+        comments: totalComments,
+        publicMessages: totalPublicMessages,
+        privateMessages: totalPrivateMessages
       },
+      totalPublicMessages,
+      totalPrivateMessages,
+      activeDialogs: activeDialogs.length,
+      avgMessagesPerDay,
+      avgLikesPerPost,
+      avgCommentsPerPost,
+      avgViewsPerPost,
+      avgPostsPerUser,
+      engagementRate,
+      likesToViewsRatio,
+      todayActivity,
       postsByDay,
       usersByDay,
       likesByDay,
+      commentsByDay,
       topTags: topTags.map(t => ({ name: t._id, value: t.count })),
-      topAuthors,
       topAuthorsByLikes,
+      topAuthorsByComments,
       topPosts,
       topLikedPosts,
-      activityData
+      activityData,
+      messageActivityByHour: messageActivityData
     });
   } catch (error) {
     console.error('Stats error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
+}
+
+// Вспомогательная функция для получения статистики по дням
+async function getStatsByDay(model: any, fromDate: Date) {
+  const timezoneOffset = 3;
+  const stats = await model.aggregate([
+    { $match: { createdAt: { $gte: fromDate } } },
+    {
+      $addFields: {
+        localDate: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: { $add: ['$createdAt', timezoneOffset * 60 * 60 * 1000] }
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: '$localDate',
+        count: { $sum: 1 }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+  
+  return stats;
 }
