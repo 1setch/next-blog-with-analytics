@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import StatsCards from '@/components/admin/StatsCards';
 import UnifiedChart from '@/components/admin/UnifiedChart';
 import TopPosts from '@/components/admin/TopPosts';
@@ -11,6 +12,10 @@ export default function AdminPage() {
   const router = useRouter();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState({
+    from: '',
+    to: '',
+  });
 
   useEffect(() => {
     checkAuth();
@@ -26,9 +31,16 @@ export default function AdminPage() {
     }
   };
 
-  const fetchStats = async () => {
+  const fetchStats = async (from?: string, to?: string) => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/admin/stats');
+      let url = '/api/admin/stats';
+      const params = new URLSearchParams();
+      if (from) params.append('from', from);
+      if (to) params.append('to', to);
+      if (params.toString()) url += `?${params.toString()}`;
+      
+      const res = await fetch(url);
       const data = await res.json();
       setStats(data);
     } catch (error) {
@@ -36,6 +48,15 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDateFilter = () => {
+    fetchStats(dateRange.from, dateRange.to);
+  };
+
+  const resetFilter = () => {
+    setDateRange({ from: '', to: '' });
+    fetchStats();
   };
 
   if (loading) {
@@ -53,15 +74,74 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto p-4 md:p-6">
-        <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Админ-панель</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">Аналитика и управление блогом</p>
+        {/* Заголовок и кнопки управления */}
+        <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Админ-панель</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">Аналитика и управление блогом</p>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              href="/admin/users"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
+            >
+              👥 Управление пользователями
+            </Link>
+            <Link
+              href="/admin/comments"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition"
+            >
+              💬 Модерация комментариев
+            </Link>
+          </div>
+        </div>
+    
+        
+
+        {/* Фильтр по дате */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                С даты
+              </label>
+              <input
+                type="date"
+                value={dateRange.from}
+                onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+                className="border rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                По дату
+              </label>
+              <input
+                type="date"
+                value={dateRange.to}
+                onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                className="border rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+            <button
+              onClick={handleDateFilter}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
+            >
+              Применить
+            </button>
+            <button
+              onClick={resetFilter}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition"
+            >
+              Сбросить
+            </button>
+          </div>
         </div>
 
         {/* Карточки со статистикой */}
         <StatsCards stats={stats} />
 
-        {/* График активности пользователей */}
+        {/* График активности пользователей по часам */}
         <div className="mb-8">
           <UnifiedChart
             type="area"
