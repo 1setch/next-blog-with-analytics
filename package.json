@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "add-data": "node scripts/add-data.js",
-    "add-more": "node scripts/add-more-data.js"
+    "add-more": "node scripts/add-more-data.js",
+    "export-code": "node scripts/export-code.js"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
