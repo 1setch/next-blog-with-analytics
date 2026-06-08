@@ -11,7 +11,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -37,46 +37,6 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - создать уведомление (публичный доступ для серверных вызовов)
-export async function POST(request: Request) {
-  try {
-    const { userId, type, sourceId, sourceAuthorId, sourceTitle } = await request.json();
-    
-    console.log('📝 Создание уведомления:', { userId, type, sourceId, sourceAuthorId, sourceTitle });
-    
-    if (!userId || !type || !sourceId) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-    
-    await connectToDatabase();
-    
-    // Проверяем, существует ли пользователь
-    const User = (await import('@/models/User')).default;
-    const userExists = await User.findById(userId);
-    if (!userExists) {
-      console.log('❌ Пользователь не найден:', userId);
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-    
-    const notification = await Notification.create({
-      userId,
-      type,
-      sourceId,
-      sourceAuthorId: sourceAuthorId || userId,
-      sourceTitle: sourceTitle || '',
-      read: false,
-      createdAt: new Date(),
-    });
-    
-    console.log('✅ Уведомление создано:', notification._id);
-    
-    return NextResponse.json(notification, { status: 201 });
-  } catch (error) {
-    console.error('❌ POST notification error:', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
-  }
-}
-
 // PUT - отметить как прочитанные
 export async function PUT(request: Request) {
   try {
@@ -85,7 +45,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -114,7 +74,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }

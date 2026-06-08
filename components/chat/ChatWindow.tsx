@@ -16,12 +16,12 @@ interface Message {
   read: boolean;
 }
 
-interface ChatWindowProps {
+interface PrivateChatProps {
   selectedUser: { id: string; name: string } | null;
   onMessageSent?: () => void;
 }
 
-export default function ChatWindow({ selectedUser, onMessageSent }: ChatWindowProps) {
+export default function PrivateChat({ selectedUser, onMessageSent }: PrivateChatProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -29,11 +29,13 @@ export default function ChatWindow({ selectedUser, onMessageSent }: ChatWindowPr
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isMounted = useRef(true);
   const isAdmin = user?.email === 'admin@example.com';
+  const pusherChannelRef = useRef<any>(null);
+  const pusherClientRef = useRef<any>(null);
+  const isMounted = useRef(true);
 
   const fetchMessages = useCallback(async () => {
-    if (!selectedUser || !isMounted.current) return;
+    if (!selectedUser || !user || !isMounted.current) return;
     
     try {
       const res = await fetch(`/api/chat/private?withUserId=${selectedUser.id}`);
@@ -46,43 +48,112 @@ export default function ChatWindow({ selectedUser, onMessageSent }: ChatWindowPr
       console.error('Error fetching messages:', error);
       if (isMounted.current) setLoading(false);
     }
-  }, [selectedUser?.id]);
+  }, [selectedUser?.id, user?._id]);
 
-  // Подписка на Pusher
+  // Подписка на Pusher - только когда выбран пользователь
   useEffect(() => {
+    // Закрываем предыдущие соединения
+    if (pusherChannelRef.current) {
+      pusherChannelRef.current.unbind_all();
+      pusherChannelRef.current.unsubscribe();
+      pusherChannelRef.current = null;
+    }
+    if (pusherClientRef.current) {
+      pusherClientRef.current.disconnect();
+      pusherClientRef.current = null;
+    }
+    
     if (!selectedUser || !user) return;
     
     isMounted.current = true;
     fetchMessages();
     
+    let isActive = true;
+    let pollingInterval: NodeJS.Timeout | null = null;
+    
     const initPusher = async () => {
       const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
-      if (!pusherKey) return;
+      if (!pusherKey) {
+        console.warn('Pusher not configured - using polling');
+        // Fallback polling
+        pollingInterval = setInterval(() => {
+          if (isMounted.current && selectedUser) {
+            fetchMessages();
+          }
+        }, 3000);
+        return;
+      }
       
-      const PusherClient = (await import('pusher-js')).default;
-      const pusherClient = new PusherClient(pusherKey, {
-        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-      });
-      
-      const channelName = `private-chat-${user._id}-${selectedUser.id}`;
-      const channel = pusherClient.subscribe(channelName);
-      
-      channel.bind('new-message', (newMessage: Message) => {
-        setMessages(prev => [...prev, newMessage]);
-        setTimeout(scrollToBottom, 100);
-      });
-      
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-        pusherClient.disconnect();
-      };
+      try {
+        const PusherClient = (await import('pusher-js')).default;
+        
+        // Создаем новый клиент только если нет активного
+        if (!pusherClientRef.current) {
+          const client = new PusherClient(pusherKey, {
+            cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+            forceTLS: true,
+            authEndpoint: '/api/pusher/auth',
+            auth: {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded', // ← ИСПРАВЛЕНО: form-urlencoded
+              },
+            },
+          });
+          
+          client.connection.bind('state_change', (states: any) => {
+            console.log('Pusher connection state:', states.current);
+          });
+          
+          client.connection.bind('error', (err: any) => {
+            console.error('Pusher connection error:', err);
+          });
+          
+          pusherClientRef.current = client;
+        }
+        
+        if (!isActive || !isMounted.current) return;
+        
+        const channelName = `private-chat-${user._id}-${selectedUser.id}`;
+        const channel = pusherClientRef.current.subscribe(channelName);
+        pusherChannelRef.current = channel;
+        
+        channel.bind('pusher:subscription_succeeded', () => {
+          console.log('✅ Подписан на канал:', channelName);
+        });
+        
+        channel.bind('new-message', (newMessage: Message) => {
+          console.log('📨 Новое сообщение через Pusher:', newMessage);
+          if (isMounted.current) {
+            setMessages(prev => {
+              if (prev.some(m => m._id === newMessage._id)) return prev;
+              return [...prev, newMessage];
+            });
+            setTimeout(scrollToBottom, 100);
+          }
+        });
+        
+        channel.bind('pusher:subscription_error', (error: any) => {
+          console.error('❌ Ошибка подписки на канал:', error);
+        });
+      } catch (error) {
+        console.error('Pusher initialization error:', error);
+      }
     };
     
-    const cleanup = initPusher();
+    initPusher();
+    
     return () => {
+      isActive = false;
       isMounted.current = false;
-      cleanup.then(fn => fn?.());
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+      if (pusherChannelRef.current) {
+        pusherChannelRef.current.unbind_all();
+        pusherChannelRef.current.unsubscribe();
+        pusherChannelRef.current = null;
+      }
+      // Не отключаем клиент полностью, чтобы не создавать его заново
     };
   }, [selectedUser?.id, user?._id, fetchMessages]);
 
@@ -93,13 +164,6 @@ export default function ChatWindow({ selectedUser, onMessageSent }: ChatWindowPr
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  useEffect(() => {
-    // Фокус на поле ввода при открытии чата
-    if (selectedUser && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [selectedUser]);
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedUser) return;
@@ -119,7 +183,7 @@ export default function ChatWindow({ selectedUser, onMessageSent }: ChatWindowPr
       if (res.ok) {
         setNewMessage('');
         onMessageSent?.();
-        // Сообщение добавится через Pusher
+        if (inputRef.current) inputRef.current.focus();
       } else {
         const error = await res.json();
         toast.error(error.error || 'Ошибка отправки');
@@ -262,7 +326,6 @@ export default function ChatWindow({ selectedUser, onMessageSent }: ChatWindowPr
                       )}
                     </div>
                     
-                    {/* Кнопка удаления */}
                     {canDelete(msg) && (
                       <button
                         onClick={() => deleteMessage(msg._id)}

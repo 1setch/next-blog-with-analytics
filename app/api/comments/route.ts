@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import Comment from '@/models/Comment';
 import Post from '@/models/Post';
+import Notification from '@/models/Notification';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
 // GET - получить комментарии поста
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -88,54 +89,32 @@ export async function POST(request: Request) {
     const populatedComment = await Comment.findById(comment._id)
       .populate('author', 'username avatar');
     
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    
     // Уведомление автору поста (если комментатор не автор)
     if (post.author.toString() !== payload.userId) {
-      console.log('📤 Уведомление автору поста:', post.author.toString());
-      
-      try {
-        const notificationRes = await fetch(`${baseUrl}/api/notifications`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: post.author.toString(),
-            type: 'comment',
-            sourceId: post.slug,
-            sourceSlug: post.slug,
-            sourceAuthorId: payload.userId,
-            sourceTitle: post.title,
-          }),
-        });
-        console.log('📬 Ответ уведомления (комментарий):', notificationRes.status);
-      } catch (err) {
-        console.error('Notification error:', err);
-      }
+      await Notification.create({
+        userId: post.author.toString(),
+        type: 'comment',
+        sourceId: post.slug,
+        sourceSlug: post.slug,
+        sourceAuthorId: payload.userId,
+        sourceTitle: post.title,
+      });
+      console.log('📬 Уведомление создано для автора поста');
     }
     
     // Если это ответ на комментарий — уведомляем автора родительского комментария
     if (parentId) {
       const parentComment = await Comment.findById(parentId);
       if (parentComment && parentComment.author.toString() !== payload.userId) {
-        console.log('📤 Уведомление автору комментария:', parentComment.author.toString());
-        
-        try {
-          const notificationRes = await fetch(`${baseUrl}/api/notifications`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: parentComment.author.toString(),
-              type: 'reply',
-              sourceId: post.slug,
-              sourceSlug: post.slug,
-              sourceAuthorId: payload.userId,
-              sourceTitle: post.title,
-            }),
-          });
-          console.log('📬 Ответ уведомления (ответ):', notificationRes.status);
-        } catch (err) {
-          console.error('Notification error:', err);
-        }
+        await Notification.create({
+          userId: parentComment.author.toString(),
+          type: 'reply',
+          sourceId: post.slug,
+          sourceSlug: post.slug,
+          sourceAuthorId: payload.userId,
+          sourceTitle: post.title,
+        });
+        console.log('📬 Уведомление создано для автора комментария');
       }
     }
     

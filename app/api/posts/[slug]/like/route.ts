@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import Like from '@/models/Like';
 import Post from '@/models/Post';
+import Notification from '@/models/Notification';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
 export async function POST(
@@ -10,6 +11,8 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
+    console.log('🔍 [LIKE] Пост slug:', slug);
+    
     await connectToDatabase();
     
     const token = getTokenFromRequest(request as any);
@@ -17,12 +20,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
     
     const post = await Post.findOne({ slug });
+    console.log('🔍 [LIKE] Найден пост:', post?._id, post?.title);
+    
     if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
@@ -38,6 +43,8 @@ export async function POST(
       const newLikesCount = await Like.countDocuments({ postId: post._id });
       await Post.updateOne({ _id: post._id }, { likesCount: newLikesCount });
       
+      console.log('❤️ [LIKE] Лайк удален, новый счетчик:', newLikesCount);
+      
       return NextResponse.json({ 
         liked: false, 
         likesCount: newLikesCount 
@@ -48,34 +55,20 @@ export async function POST(
       const newLikesCount = await Like.countDocuments({ postId: post._id });
       await Post.updateOne({ _id: post._id }, { likesCount: newLikesCount });
       
-      // Отправляем уведомление (если лайкает не сам автор)
+      console.log('❤️ [LIKE] Лайк добавлен, новый счетчик:', newLikesCount);
+      
+      // Создаем уведомление для автора поста (если лайк не от самого автора)
       if (post.author.toString() !== payload.userId) {
-        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-        
-        console.log('📤 Отправка уведомления о лайке:', {
-          userId: post.author.toString(),
-          fromUser: payload.userId,
-          postSlug: post.slug,
-          postTitle: post.title
+        await Notification.create({
+          userId: post.author,
+          type: 'like',
+          sourceId: post._id,
+          sourceSlug: post.slug,
+          sourceAuthorId: payload.userId,
+          sourceAuthorName: payload.username,
+          sourceTitle: post.title,
         });
-        
-        try {
-          const notificationRes = await fetch(`${baseUrl}/api/notifications`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: post.author.toString(),
-              type: 'like',
-              sourceId: post.slug,
-              sourceSlug: post.slug,
-              sourceAuthorId: payload.userId,
-              sourceTitle: post.title,
-            }),
-          });
-          console.log('📬 Ответ уведомления (лайк):', notificationRes.status);
-        } catch (err) {
-          console.error('Notification error:', err);
-        }
+        console.log('🔔 [LIKE] Уведомление создано для:', post.author.toString());
       }
       
       return NextResponse.json({ 
@@ -84,7 +77,7 @@ export async function POST(
       });
     }
   } catch (error) {
-    console.error('Like error:', error);
+    console.error('❌ [LIKE] Ошибка:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
@@ -102,14 +95,14 @@ export async function GET(
       return NextResponse.json({ liked: false, likesCount: 0 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ liked: false, likesCount: 0 });
     }
     
     const post = await Post.findOne({ slug });
     if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+      return NextResponse.json({ liked: false, likesCount: 0 });
     }
     
     const liked = await Like.exists({ postId: post._id, userId: payload.userId });
@@ -119,7 +112,7 @@ export async function GET(
       likesCount: post.likesCount || 0 
     });
   } catch (error) {
-    console.error('GET like error:', error);
+    console.error('❌ [LIKE] GET ошибка:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

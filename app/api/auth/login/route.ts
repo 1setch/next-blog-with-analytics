@@ -28,15 +28,16 @@ export async function POST(request: Request) {
       );
     }
     
-    // Создаем токен
-    const token = signToken({
+    // Создаем токен (асинхронно!)
+    const token = await signToken({
       userId: user._id.toString(),
       username: user.username,
       email: user.email
     });
     
-    // Создаем ответ
+    // Создаем ответ с пользователем
     const response = NextResponse.json({
+      success: true,
       message: 'Login successful',
       user: {
         id: user._id,
@@ -47,11 +48,16 @@ export async function POST(request: Request) {
       }
     });
     
+    // Устанавливаем cookie
     setTokenCookie(response, token);
+    
+    // Для отладки: логируем успех
+    console.log('✅ Login successful for user:', user.email, 'Token set');
+    
     return response;
     
   } catch (error) {
-    console.error(error);
+    console.error('Login error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

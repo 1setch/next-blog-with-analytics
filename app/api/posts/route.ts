@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       if (!token) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const payload = verifyToken(token);
+      const payload = await verifyToken(token);
       if (!payload) {
         return NextResponse.json({ error: "Invalid token" }, { status: 401 });
       }
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
@@ -138,7 +138,6 @@ export async function POST(request: Request) {
     // Проверяем уникальность slug
     const existingPost = await Post.findOne({ slug });
     if (existingPost) {
-      // Если slug занят, добавляем timestamp
       slug = `${slug}-${Date.now()}`;
     }
 

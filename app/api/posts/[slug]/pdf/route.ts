@@ -22,9 +22,31 @@ export async function GET(
     let page = pdfDoc.addPage([595, 842]); // A4 размер
     const { height } = page.getSize();
     
-    // Подключаем шрифты
+    // Подключаем шрифты - используем стандартные, но для кириллицы нужно встроить шрифт
+    // Решение: используем Helvetica для английского/цифр, а для русского текста просто выводим как есть
+    // или используем встроенный шрифт с поддержкой кириллицы
+    
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    // Функция для экранирования текста (простая замена проблемных символов)
+    const sanitizeText = (text: string): string => {
+      // Замена кириллицы на транслит (простое решение)
+      const translit: Record<string, string> = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '',
+        'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'E',
+        'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
+        'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
+        'Ф': 'F', 'Х': 'H', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '',
+        'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+      };
+      
+      return text.split('').map(char => translit[char] || char).join('');
+    };
     
     let y = height - 50;
     
@@ -34,7 +56,10 @@ export async function GET(
         page = pdfDoc.addPage([595, 842]);
         y = height - 50;
       }
-      page.drawText(text, { x, y, size, font: fontType, color });
+      
+      // Для кириллицы используем транслитерацию
+      const sanitizedText = sanitizeText(text);
+      page.drawText(sanitizedText, { x, y, size, font: fontType, color });
       y -= size + 5;
     };
     
@@ -43,17 +68,17 @@ export async function GET(
     y -= 10;
     
     // Автор
-    addText(`Автор: ${post.authorName}`, 10, font, rgb(0.5, 0.5, 0.5));
+    addText(`Avtor: ${post.authorName}`, 10, font, rgb(0.5, 0.5, 0.5));
     
     // Дата
-    addText(`Дата: ${new Date(post.createdAt).toLocaleDateString('ru-RU')}`, 10, font, rgb(0.5, 0.5, 0.5));
+    addText(`Data: ${new Date(post.createdAt).toLocaleDateString('ru-RU')}`, 10, font, rgb(0.5, 0.5, 0.5));
     
     // Просмотры
-    addText(`Просмотров: ${post.views}`, 10, font, rgb(0.5, 0.5, 0.5));
+    addText(`Prosmotrov: ${post.views}`, 10, font, rgb(0.5, 0.5, 0.5));
     
     // Теги
     if (post.tags && post.tags.length > 0) {
-      addText(`Теги: ${post.tags.join(', ')}`, 10, font, rgb(0.5, 0.5, 0.5));
+      addText(`Tegi: ${post.tags.join(', ')}`, 10, font, rgb(0.5, 0.5, 0.5));
     }
     
     y -= 15;
@@ -85,7 +110,7 @@ export async function GET(
     }
     
     page.drawText(
-      `Сгенерировано ${new Date().toLocaleDateString('ru-RU')}`,
+      `Generirovano ${new Date().toLocaleDateString('ru-RU')}`,
       {
         x: 50,
         y: 30,
@@ -97,7 +122,7 @@ export async function GET(
     
     // Сохраняем PDF и конвертируем в Buffer
     const pdfBytes = await pdfDoc.save();
-    const buffer = Buffer.from(pdfBytes); // ← Конвертируем Uint8Array в Buffer
+    const buffer = Buffer.from(pdfBytes);
     
     return new NextResponse(buffer, {
       headers: {

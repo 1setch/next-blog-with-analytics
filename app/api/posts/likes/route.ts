@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ liked: {} });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ liked: {} });
     }

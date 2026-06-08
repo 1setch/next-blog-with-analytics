@@ -29,8 +29,8 @@ export async function POST(request: Request) {
       password: hashedPassword
     });
     
-    // Создаем токен
-    const token = signToken({
+    // Создаем токен (ДОБАВЛЯЕМ await)
+    const token = await signToken({
       userId: user._id.toString(),
       username: user.username,
       email: user.email
