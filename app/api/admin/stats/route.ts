@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload || payload.email !== 'admin@example.com') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

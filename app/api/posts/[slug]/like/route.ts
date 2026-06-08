@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import Like from '@/models/Like';
 import Post from '@/models/Post';
-import Notification from '@/models/Notification'; // ← ДОБАВИТЬ ЭТОТ ИМПОРТ
+import Notification from '@/models/Notification';
 import { getTokenFromRequest, verifyToken } from '@/lib/auth';
 
 export async function POST(
@@ -20,7 +20,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -63,6 +63,7 @@ export async function POST(
           userId: post.author,
           type: 'like',
           sourceId: post._id,
+          sourceSlug: post.slug,
           sourceAuthorId: payload.userId,
           sourceAuthorName: payload.username,
           sourceTitle: post.title,
@@ -94,7 +95,7 @@ export async function GET(
       return NextResponse.json({ liked: false, likesCount: 0 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ liked: false, likesCount: 0 });
     }

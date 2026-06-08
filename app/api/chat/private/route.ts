@@ -14,7 +14,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -167,14 +167,12 @@ export async function POST(request: Request) {
     // Отправляем через Pusher в реальном времени
     try {
       // Отправляем минимальные данные, БЕЗ АВАТАРА (чтобы избежать ошибки 413)
-      // Аватар может быть base64 строкой большого размера
       const pusherMessage = {
         _id: message._id.toString(),
         fromUserId: message.fromUserId.toString(),
         fromUsername: message.fromUsername,
-        // fromAvatar: message.fromAvatar, // ← НЕ отправляем аватар!
         toUserId: message.toUserId.toString(),
-        content: message.content.substring(0, 500), // Ограничиваем длину сообщения
+        content: message.content.substring(0, 500),
         createdAt: message.createdAt,
         read: message.read,
       };
@@ -189,7 +187,6 @@ export async function POST(request: Request) {
       console.log('📡 [API] Pusher уведомление отправлено');
     } catch (pusherError) {
       console.error('⚠️ [API] Ошибка Pusher:', pusherError);
-      // Не блокируем отправку сообщения если Pusher не работает
     }
     
     return NextResponse.json(message, { status: 201 });
@@ -209,7 +206,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
